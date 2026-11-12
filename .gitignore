@@ -1,0 +1,17 @@
+/target
+*.moneykeep.prev
+*.bundle
+/dist
+
+# MoneyKeep books (security-review-1 L10): the owner's books and their side files
+# (the previous version kept on save, half-written temporary copies) are never
+# committed.
+*.moneykeep
+*.moneykeep.tmp-*
+
+# Keys and certificates are never committed (security-review-1 L10).
+*.pfx
+*.p12
+*.p8
+*.pem
+*.key

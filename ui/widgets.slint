@@ -1,0 +1,244 @@
+// Small building blocks in the MoneyKeep look.
+import { Theme } from "theme.slint";
+import { CheckBox, LineEdit } from "std-widgets.slint";
+
+export component Card inherits Rectangle {
+    background: Theme.surface;
+    border-radius: Theme.radius;
+    border-width: 1px;
+    border-color: Theme.border;
+}
+
+export component Heading inherits Text {
+    font-size: Theme.subtitle-size;
+    font-weight: 600;
+    color: Theme.text;
+}
+
+export component Caption inherits Text {
+    font-size: Theme.caption-size;
+    color: Theme.text-secondary;
+    wrap: word-wrap;
+}
+
+// A labelled text field.
+export component Field inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <bool> password: false;
+    in property <bool> enabled: true;
+    // Take the keyboard focus when shown (the first field of a dialog).
+    in property <bool> autofocus: false;
+    callback edited(string);
+    // Enter in the field.
+    callback accepted();
+    spacing: 2px;
+    Text {
+        text: root.label;
+        font-size: Theme.caption-size;
+        color: Theme.text-secondary;
+        wrap: word-wrap;
+    }
+    LineEdit {
+        init => {
+            if root.autofocus {
+                self.focus();
+            }
+        }
+        min-width: 40px;
+        text <=> root.text;
+        placeholder-text: root.placeholder;
+        input-type: root.password ? InputType.password : InputType.text;
+        enabled: root.enabled;
+        edited(t) => { root.edited(t); }
+        accepted => { root.accepted(); }
+    }
+}
+
+// One entry of the left rail.
+export component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    in property <int> badge: 0;
+    callback clicked;
+    height: 36px;
+    border-radius: Theme.radius-small;
+    background: active ? Theme.accent-soft : ta.has-hover ? Theme.hover : transparent;
+    HorizontalLayout {
+        padding-left: Theme.s3;
+        padding-right: Theme.s2;
+        spacing: Theme.s2;
+        Text {
+            text: root.label;
+            vertical-alignment: center;
+            color: root.active ? Theme.accent : Theme.text;
+            font-weight: root.active ? 600 : 400;
+            font-size: Theme.body-size;
+        }
+        if root.badge > 0: Rectangle {
+            width: 22px;
+            height: 18px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 9px;
+            background: Theme.tone-bg(2);
+            Text {
+                text: root.badge;
+                font-size: 11px;
+                color: Theme.error;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// A small coloured label.
+export component Badge inherits Rectangle {
+    in property <string> text;
+    in property <int> tone: 1;
+    height: 20px;
+    width: t.preferred-width + 14px;
+    border-radius: 10px;
+    background: Theme.tone-bg(tone);
+    t := Text {
+        text: root.text;
+        font-size: 11px;
+        color: Theme.tone(root.tone);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// A banner across the top of a page (status messages).
+export component Banner inherits Rectangle {
+    in property <string> text;
+    in property <int> tone: 5;
+    callback dismissed;
+    background: Theme.tone-bg(tone);
+    border-radius: Theme.radius-small;
+    min-height: 36px;
+    HorizontalLayout {
+        padding: Theme.s2;
+        padding-left: Theme.s3;
+        spacing: Theme.s2;
+        Text {
+            text: root.text;
+            color: Theme.tone(root.tone);
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        Rectangle {
+            width: 24px;
+            Text {
+                text: "✕";
+                color: Theme.tone(root.tone);
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            TouchArea {
+                clicked => { root.dismissed(); }
+            }
+        }
+    }
+}
+
+// A dimmed backdrop with a centred card, for dialogs.
+export component Dialog inherits Rectangle {
+    in property <string> title;
+    in property <length> card-width: 440px;
+    background: Theme.scrim;
+    TouchArea { }
+    Card {
+        width: root.card-width;
+        height: body.preferred-height;
+        x: (root.width - self.width) / 2;
+        y: max(24px, (root.height - self.height) / 2);
+        drop-shadow-blur: 24px;
+        drop-shadow-color: Theme.shadow;
+        body := VerticalLayout {
+            padding: Theme.s5;
+            spacing: Theme.s3;
+            Heading { text: root.title; }
+            @children
+        }
+    }
+}
+
+// MoneyKeep's main action button: the teal accent.
+export component PrimaryButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback clicked;
+    min-height: Theme.control-height;
+    min-width: t.preferred-width + 32px;
+    preferred-width: t.preferred-width + 32px;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-small;
+    background: !enabled ? Theme.border : ta.pressed ? Theme.accent.darker(0.25) : ta.has-hover ? Theme.accent.darker(0.12) : Theme.accent;
+    accessible-role: button;
+    accessible-label: text;
+    t := Text {
+        text: root.text;
+        color: root.enabled ? Theme.on-accent : Theme.text-secondary;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => { root.clicked(); }
+    }
+}
+
+// One choice of a segmented switch.
+export component Segment inherits Rectangle {
+    in property <string> text;
+    in property <bool> active;
+    callback clicked;
+    min-height: Theme.control-height;
+    preferred-width: t.preferred-width + 28px;
+    horizontal-stretch: 0;
+    border-radius: Theme.radius-small;
+    border-width: 1px;
+    border-color: active ? Theme.accent : Theme.border;
+    background: active ? Theme.accent-soft : ta.has-hover ? Theme.hover : Theme.surface;
+    accessible-role: button;
+    accessible-label: text;
+    t := Text {
+        text: root.text;
+        color: root.active ? Theme.accent : Theme.text;
+        font-weight: root.active ? 600 : 400;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// A check box whose label wraps.
+export component CheckRow inherits HorizontalLayout {
+    in-out property <bool> checked;
+    in property <string> text;
+    in property <bool> enabled: true;
+    callback toggled;
+    spacing: Theme.s1;
+    CheckBox {
+        checked <=> root.checked;
+        enabled: root.enabled;
+        toggled => { root.toggled(); }
+    }
+    Text {
+        text: root.text;
+        wrap: word-wrap;
+        vertical-alignment: center;
+        color: root.enabled ? Theme.text : Theme.text-secondary;
+        horizontal-stretch: 1;
+    }
+}

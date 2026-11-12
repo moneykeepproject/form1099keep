@@ -1,0 +1,25 @@
+Form1099Keep
+Copyright (c) 2026 MoneyKeep Project contributors
+
+Form1099Keep is licensed under either of
+
+  * Apache License, Version 2.0 (LICENSE-APACHE or https://www.apache.org/licenses/LICENSE-2.0)
+  * MIT license (LICENSE-MIT or https://opensource.org/licenses/MIT)
+
+at your option.
+
+Form1099Keep builds on MoneyKeep (https://github.com/moneykeepproject/moneykeep),
+MIT OR Apache-2.0: its books are MoneyKeep books.
+
+The user interface is built with Slint (https://slint.dev), used under the Slint
+Royalty-free Desktop, Mobile, and Web Applications License 2.0 (its text is in
+THIRD-PARTY-LICENSES.txt, with the slint crates); the README shows Slint's
+attribution badge, as that licence asks. Form1099Keep does not redistribute Slint
+on its own. Form1099Keep's own code stays MIT OR Apache-2.0.
+
+Every third-party crate compiled into Form1099Keep is listed with its version,
+its licence and the licence texts it ships in THIRD-PARTY-LICENSES.txt, installed
+beside the programs.
+
+Form1099Keep prepares Forms 1099-NEC and 1099-MISC; it does not give tax advice
+or transmit to the IRS.

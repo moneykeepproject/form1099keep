@@ -1,0 +1,92 @@
+[package]
+name = "form1099keep"
+description = "Form1099Keep: an independent Form 1099-NEC and 1099-MISC creator in the MoneyKeep family. Books are MoneyKeep books."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT OR Apache-2.0"
+authors = ["MoneyKeep Project contributors"]
+repository = "https://github.com/moneykeepproject/form1099keep"
+publish = false
+default-run = "form1099keep"
+
+# xtask: developer tasks (cargo xtask release / installer), as in CalcKeep and MoneyKeep.
+[workspace]
+members = [".", "xtask"]
+
+[lib]
+name = "form1099keep"
+path = "src/lib.rs"
+
+[[bin]]
+name = "form1099keep"
+path = "src/main.rs"
+
+[[bin]]
+name = "form1099keep-cli"
+path = "src/bin/form1099keep-cli.rs"
+
+[dependencies]
+# The MoneyKeep book format, encryption and audit log, and (for import) MoneyKeep's
+# command registry. Built from the sibling checkout ../moneykeep
+# (https://github.com/moneykeepproject/moneykeep).
+mk-core = { path = "../moneykeep/crates/mk-core" }
+mk-store = { path = "../moneykeep/crates/mk-store" }
+mk-commands = { path = "../moneykeep/crates/mk-commands" }
+rust_decimal = { version = "1", features = ["serde-str", "maths"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
+uuid = { version = "1", features = ["v7"] }
+clap = { version = "4", features = ["derive", "env"] }
+rpassword = "7"
+directories = "6"
+# The user interface, as in MoneyKeep (ui-slint.md): Slint under its Royalty-free
+# License 2.0, Fluent style, pinned to MoneyKeep's exact version.
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-femtovg", "renderer-software", "accessibility"] }
+rfd = { version = "0.17", default-features = false, features = ["xdg-portal"] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+
+# The Windows icon and version resource of form1099keep.exe, as in CalcKeep.
+[target."cfg(windows)".build-dependencies]
+winresource = "0.1.34"
+
+[dev-dependencies]
+tempfile = "3"
+# security-review-1 M6 tests: write a book in a newer format (the same rusqlite mk-store uses).
+rusqlite = { version = "0.37", features = ["bundled"] }
+# Slint's testing backend (preliminary; pinned like slint itself).
+i-slint-backend-testing = "=1.18.1"
+
+[lints.rust]
+# deny, not forbid: Slint's generated code allows unsafe locally.
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "warn"
+float_arithmetic = "deny"
+dbg_macro = "deny"
+print_stdout = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+# Key derivation is deliberately expensive; optimise it even in debug builds.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package."*"]
+debug = false

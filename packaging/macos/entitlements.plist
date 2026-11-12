@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened-runtime entitlements for Form1099Keep.app and form1099keep-cli beside it
+     (MoneyKeep's docs/specs/macos-release.md P2). Deliberately empty: the programs are Rust,
+     load no unsigned code, need no JIT and are not sandboxed (books are MoneyKeep books where
+     the user keeps them; settings live in the user's own Application Support folder). Add an
+     exception here only with a reason in a comment. -->
+<plist version="1.0">
+<dict>
+</dict>
+</plist>

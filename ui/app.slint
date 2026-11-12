@@ -1,0 +1,1226 @@
+// Form1099Keep's window (form1099keep.md "Front ends"). Views only: every action is
+// a callback handled by the Rust controller, which calls the library.
+import { Button, CheckBox, ComboBox, LineEdit, ListView, ScrollView, TextEdit, Palette } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { Badge, Banner, Caption, Card, CheckRow, Dialog, Field, Heading, NavItem, PrimaryButton } from "widgets.slint";
+
+export { Theme }
+
+export struct FormRow {
+    id: string,
+    recipient: string,
+    kind: string,
+    total: string,
+    status: string,
+    status-tone: int,
+    issues: string,
+    issues-tone: int,
+}
+
+export struct PersonRow {
+    id: string,
+    name: string,
+    detail: string,
+    tin: string,
+    issues: string,
+}
+
+export struct BoxField {
+    key: string,
+    title: string,
+    // 0 amount, 1 check box, 2 occupation codes
+    kind: int,
+    value: string,
+    checked: bool,
+    bold: bool,
+}
+
+export struct Note {
+    tone: int,
+    text: string,
+}
+
+export struct HistoryRow {
+    when: string,
+    what: string,
+    detail: string,
+}
+
+export struct RecentBook {
+    name: string,
+    path: string,
+}
+
+component Section inherits VerticalLayout {
+    in property <string> title;
+    spacing: Theme.s2;
+    Text {
+        text: root.title;
+        font-size: Theme.caption-size;
+        font-weight: 600;
+        color: Theme.accent;
+    }
+    @children
+}
+
+component ListRow inherits Rectangle {
+    in property <bool> selected;
+    callback clicked;
+    height: 52px;
+    border-radius: Theme.radius-small;
+    background: selected ? Theme.accent-soft : ta.has-hover ? Theme.hover : transparent;
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+    }
+    @children
+}
+
+component NoteList inherits VerticalLayout {
+    in property <[Note]> notes;
+    spacing: Theme.s1;
+    for n in root.notes: HorizontalLayout {
+        spacing: Theme.s2;
+        Rectangle {
+            width: 8px;
+            height: 8px;
+            y: 6px;
+            border-radius: 4px;
+            background: Theme.tone(n.tone);
+        }
+        Text {
+            text: n.text;
+            wrap: word-wrap;
+            color: Theme.text;
+            font-size: Theme.body-size;
+            horizontal-stretch: 1;
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: book-open ? book-name + " — Form1099Keep" : "Form1099Keep";
+    icon: @image-url("../assets/icon.svg");
+    preferred-width: 1240px;
+    preferred-height: 800px;
+    min-width: 980px;
+    min-height: 640px;
+    background: Theme.page;
+    default-font-size: Theme.body-size;
+
+    // ----- state -------------------------------------------------------------------
+    in property <bool> book-open;
+    in property <string> book-name;
+    in property <bool> book-encrypted;
+    in property <[RecentBook]> recent;
+    in-out property <int> section: 0;
+    in property <[string]> years;
+    in-out property <int> year-index;
+    in property <string> message;
+    in property <int> message-tone: 5;
+    in property <int> issue-count;
+
+    // Forms
+    in property <[FormRow]> forms;
+    in property <string> forms-summary;
+    in-out property <string> selected-form;
+    in property <bool> form-editing;
+    in property <string> form-heading;
+    in property <[string]> payer-names;
+    in property <[string]> recipient-names;
+    in-out property <int> f-payer;
+    in-out property <int> f-recipient;
+    in-out property <int> f-kind;
+    in-out property <string> f-year;
+    in property <[BoxField]> f-boxes;
+    in-out property <string> f-account;
+    in-out property <bool> f-second-tin;
+    in-out property <string> s1-state;
+    in-out property <string> s1-no;
+    in-out property <string> s1-withheld;
+    in-out property <string> s1-income;
+    in-out property <string> s2-state;
+    in-out property <string> s2-no;
+    in-out property <string> s2-withheld;
+    in-out property <string> s2-income;
+    in-out property <string> f-notes;
+    in property <string> f-status;
+    in property <bool> f-filed;
+    in property <bool> f-corrected;
+    in property <bool> f-is-new;
+    in property <[Note]> f-findings;
+
+    // Payers and recipients
+    in-out property <bool> people-payers: false;
+    in property <[PersonRow]> people;
+    in-out property <string> selected-person;
+    in property <bool> person-editing;
+    in property <bool> p-is-payer;
+    in property <bool> p-is-new;
+    in-out property <int> p-name-type;
+    in-out property <string> p-business;
+    in-out property <string> p-business2;
+    in-out property <string> p-first;
+    in-out property <string> p-middle;
+    in-out property <string> p-last;
+    in-out property <string> p-suffix;
+    in-out property <int> p-tin-type;
+    in-out property <string> p-tin;
+    in-out property <string> p-line1;
+    in-out property <string> p-line2;
+    in-out property <string> p-city;
+    in-out property <string> p-state;
+    in-out property <string> p-zip;
+    in-out property <string> p-country;
+    in-out property <string> p-phone;
+    in-out property <string> p-email;
+    in-out property <string> p-account;
+    in property <string> p-source;
+    in property <[Note]> p-findings;
+
+    // Import
+    in-out property <string> im-path;
+    in property <bool> im-encrypted;
+    in-out property <string> im-password;
+    in-out property <string> im-year;
+    in-out property <int> im-payer;
+    in-out property <bool> im-all;
+    in property <[Note]> im-result;
+
+    // Print and e-file
+    in-out property <bool> copy-b: true;
+    in-out property <bool> copy-1;
+    in-out property <bool> copy-2;
+    in-out property <bool> copy-c;
+    in-out property <bool> truncate-tin: true;
+    in-out property <int> ir-kind;
+    in-out property <int> ir-payer;
+    in-out property <string> ir-template;
+    in-out property <string> filed-date;
+    in-out property <string> filed-receipt;
+    in property <[Note]> out-result;
+    in property <int> ready-count;
+
+    // History
+    in property <[HistoryRow]> history;
+
+    // Dialogs
+    in-out property <int> dialog: 0; // 0 none, 1 new book, 2 password, 3 recovery key, 4 protect, 5/6 confirm delete, 7 use as a 1099 book
+    in-out property <string> d-name;
+    in-out property <string> d-password;
+    in-out property <string> d-password2;
+    in property <string> d-error;
+    in-out property <string> d-text;
+    in property <string> recovery-key;
+
+    // ----- callbacks -----------------------------------------------------------------
+    callback new-book();
+    callback create-book();
+    callback open-book();
+    callback open-recent(string);
+    callback unlock();
+    callback close-book();
+    callback protect-book();
+    callback dialog-cancel();
+    callback confirm-mark();
+    callback recovery-done();
+    callback dismiss-message();
+    callback year-changed(int);
+    callback select-form(string);
+    callback new-form();
+    callback form-kind-changed(int);
+    callback box-edited(int, string);
+    callback box-toggled(int, bool);
+    callback save-form();
+    callback delete-form();
+    callback mark-ready();
+    callback mark-all-ready();
+    callback correct-form();
+    callback close-form();
+    callback show-people(bool);
+    callback select-person(string);
+    callback new-person();
+    callback save-person();
+    callback delete-person();
+    callback close-person();
+    callback confirm-delete();
+    callback choose-mk-book();
+    callback run-import();
+    callback print-copies();
+    callback choose-template();
+    callback save-iris();
+    callback mark-filed();
+    callback refresh-history();
+
+    // ----- start screen --------------------------------------------------------------
+    if !root.book-open: Rectangle {
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.s4;
+            HorizontalLayout {
+                alignment: center;
+                Image {
+                    source: @image-url("../assets/icon.svg");
+                    width: 96px;
+                    height: 96px;
+                }
+            }
+            Text {
+                text: "Form1099Keep";
+                font-size: 32px;
+                font-weight: 700;
+                color: Theme.text;
+                horizontal-alignment: center;
+            }
+            Text {
+                text: "Forms 1099-NEC and 1099-MISC  ·  A MoneyKeep app";
+                color: Theme.text-secondary;
+                horizontal-alignment: center;
+            }
+            HorizontalLayout {
+                alignment: center;
+                spacing: Theme.s3;
+                PrimaryButton {
+                    text: "New 1099 book…";
+                    clicked => { root.new-book(); }
+                }
+                Button {
+                    text: "Open book…";
+                    clicked => { root.open-book(); }
+                }
+            }
+            if root.message != "": HorizontalLayout {
+                alignment: center;
+                Banner {
+                    width: 520px;
+                    text: root.message;
+                    tone: root.message-tone;
+                    dismissed => { root.dismiss-message(); }
+                }
+            }
+            if root.recent.length > 0: HorizontalLayout {
+                alignment: center;
+                Card {
+                    width: 520px;
+                    VerticalLayout {
+                        padding: Theme.s4;
+                        spacing: Theme.s1;
+                        Text {
+                            text: "Recent books";
+                            font-weight: 600;
+                            color: Theme.text-secondary;
+                        }
+                        for b in root.recent: ListRow {
+                            height: 44px;
+                            clicked => { root.open-recent(b.path); }
+                            VerticalLayout {
+                                padding-left: Theme.s2;
+                                alignment: center;
+                                Text { text: b.name; color: Theme.text; }
+                                Text {
+                                    text: b.path;
+                                    font-size: Theme.caption-size;
+                                    color: Theme.text-secondary;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ----- the open book -------------------------------------------------------------
+    if root.book-open: HorizontalLayout {
+        // Rail
+        Rectangle {
+            width: 210px;
+            background: Theme.surface;
+            border-width: 0;
+            VerticalLayout {
+                padding: Theme.s3;
+                spacing: Theme.s1;
+                HorizontalLayout {
+                    spacing: Theme.s2;
+                    padding-bottom: Theme.s3;
+                    Image {
+                        source: @image-url("../assets/icon.svg");
+                        width: 28px;
+                        height: 28px;
+                    }
+                    VerticalLayout {
+                        Text {
+                            text: root.book-name;
+                            font-weight: 600;
+                            color: Theme.text;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: root.book-encrypted ? "Password protected" : "Not protected";
+                            font-size: 11px;
+                            color: root.book-encrypted ? Theme.success : Theme.warning;
+                        }
+                    }
+                }
+                // In order of use: who pays, bring in vendors, who is paid, the
+                // forms, then print and file.
+                NavItem {
+                    label: "Payers";
+                    active: root.section == 0;
+                    clicked => {
+                        root.section = 0;
+                        root.show-people(true);
+                    }
+                }
+                NavItem {
+                    label: "Import from MoneyKeep";
+                    active: root.section == 1;
+                    clicked => { root.section = 1; }
+                }
+                NavItem {
+                    label: "Recipients";
+                    active: root.section == 2;
+                    clicked => {
+                        root.section = 2;
+                        root.show-people(false);
+                    }
+                }
+                NavItem {
+                    label: "Forms";
+                    active: root.section == 3;
+                    badge: root.issue-count;
+                    clicked => { root.section = 3; }
+                }
+                NavItem {
+                    label: "Print and e-file";
+                    active: root.section == 4;
+                    clicked => { root.section = 4; }
+                }
+                NavItem {
+                    label: "History";
+                    active: root.section == 5;
+                    clicked => {
+                        root.section = 5;
+                        root.refresh-history();
+                    }
+                }
+                Rectangle { vertical-stretch: 1; }
+                if !root.book-encrypted: PrimaryButton {
+                    text: "Protect with a password…";
+                    clicked => { root.protect-book(); }
+                }
+                Button {
+                    text: "Close book";
+                    clicked => { root.close-book(); }
+                }
+            }
+        }
+        Rectangle {
+            width: 1px;
+            background: Theme.border;
+        }
+
+        // Page
+        VerticalLayout {
+            padding: Theme.s5;
+            spacing: Theme.s3;
+            HorizontalLayout {
+                spacing: Theme.s3;
+                Text {
+                    text: root.section == 0 ? "Payers" : root.section == 1 ? "Import from MoneyKeep" : root.section == 2 ? "Recipients" : root.section == 3 ? "Forms" : root.section == 4 ? "Print and e-file" : "History";
+                    font-size: Theme.title-size;
+                    font-weight: 600;
+                    color: Theme.text;
+                    vertical-alignment: center;
+                    horizontal-stretch: 0;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                if root.section == 3 || root.section == 4: HorizontalLayout {
+                    spacing: Theme.s2;
+                    horizontal-stretch: 0;
+                    Text {
+                        horizontal-stretch: 0;
+                        text: "Tax year";
+                        vertical-alignment: center;
+                        color: Theme.text-secondary;
+                    }
+                    ComboBox {
+                        width: 110px;
+                        model: root.years;
+                        current-index <=> root.year-index;
+                        selected => { root.year-changed(self.current-index); }
+                    }
+                }
+            }
+            if root.message != "": Banner {
+                text: root.message;
+                tone: root.message-tone;
+                dismissed => { root.dismiss-message(); }
+            }
+
+            // ----- Forms -----
+            if root.section == 3: HorizontalLayout {
+                spacing: Theme.s4;
+                vertical-stretch: 1;
+                Card {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        padding: Theme.s3;
+                        spacing: Theme.s2;
+                        HorizontalLayout {
+                            spacing: Theme.s2;
+                            Caption {
+                                text: root.forms-summary;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+                            Button {
+                                text: "Mark ready";
+                                enabled: root.forms.length > 0;
+                                clicked => { root.mark-all-ready(); }
+                            }
+                            PrimaryButton {
+                                text: "New form";
+                                clicked => { root.new-form(); }
+                            }
+                        }
+                        if root.forms.length == 0: VerticalLayout {
+                            alignment: center;
+                            vertical-stretch: 1;
+                            Text {
+                                text: "No forms for this year yet.";
+                                horizontal-alignment: center;
+                                color: Theme.text-secondary;
+                            }
+                            Text {
+                                text: "Add a form, or import vendors and payments from a MoneyKeep book.";
+                                horizontal-alignment: center;
+                                color: Theme.text-secondary;
+                                font-size: Theme.caption-size;
+                            }
+                        }
+                        if root.forms.length > 0: ListView {
+                            vertical-stretch: 1;
+                            for f in root.forms: ListRow {
+                                selected: f.id == root.selected-form;
+                                clicked => { root.select-form(f.id); }
+                                HorizontalLayout {
+                                    padding-left: Theme.s2;
+                                    padding-right: Theme.s3;
+                                    spacing: Theme.s3;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text {
+                                            text: f.recipient;
+                                            color: Theme.text;
+                                            overflow: elide;
+                                        }
+                                        HorizontalLayout {
+                                            spacing: Theme.s2;
+                                            alignment: start;
+                                            Text {
+                                                text: f.kind;
+                                                font-size: Theme.caption-size;
+                                                color: Theme.text-secondary;
+                                            }
+                                            if f.issues != "": Text {
+                                                text: f.issues;
+                                                font-size: Theme.caption-size;
+                                                color: Theme.tone(f.issues-tone);
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        text: f.total;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: right;
+                                        color: Theme.text;
+                                        min-width: 100px;
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Badge {
+                                            text: f.status;
+                                            tone: f.status-tone;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if root.form-editing: Card {
+                    width: 470px;
+                    sv1 := ScrollView {
+                        VerticalLayout {
+                            width: sv1.visible-width;
+                            padding: Theme.s4;
+                            spacing: Theme.s3;
+                            HorizontalLayout {
+                                Heading {
+                                    text: root.form-heading;
+                                    horizontal-stretch: 1;
+                                }
+                                if root.f-corrected: Badge { text: "CORRECTED"; tone: 4; }
+                                Rectangle { width: Theme.s2; }
+                                Badge {
+                                    text: root.f-status;
+                                    tone: root.f-filed ? 3 : 1;
+                                }
+                            }
+                            if root.f-findings.length > 0: Rectangle {
+                                background: Theme.surface-alt;
+                                border-radius: Theme.radius-small;
+                                VerticalLayout {
+                                    padding: Theme.s3;
+                                    NoteList { notes: root.f-findings; }
+                                }
+                            }
+                            Section {
+                                title: "WHO";
+                                HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Caption { text: "Payer"; }
+                                        ComboBox {
+                                            model: root.payer-names;
+                                            current-index <=> root.f-payer;
+                                            enabled: !root.f-filed;
+                                        }
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Caption { text: "Recipient"; }
+                                    ComboBox {
+                                        model: root.recipient-names;
+                                        current-index <=> root.f-recipient;
+                                        enabled: !root.f-filed;
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        Caption { text: "Form"; }
+                                        ComboBox {
+                                            model: ["1099-NEC", "1099-MISC"];
+                                            current-index <=> root.f-kind;
+                                            enabled: root.f-is-new;
+                                            selected => { root.form-kind-changed(self.current-index); }
+                                        }
+                                    }
+                                    Field {
+                                        label: "Tax year";
+                                        text <=> root.f-year;
+                                        enabled: root.f-is-new;
+                                    }
+                                }
+                            }
+                            Section {
+                                title: "AMOUNTS";
+                                for b[i] in root.f-boxes: HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    Text {
+                                        text: b.title;
+                                        wrap: word-wrap;
+                                        vertical-alignment: center;
+                                        font-weight: b.bold ? 600 : 400;
+                                        color: Theme.text;
+                                        horizontal-stretch: 1;
+                                    }
+                                    if b.kind == 1: CheckBox {
+                                        checked: b.checked;
+                                        enabled: !root.f-filed;
+                                        toggled => { root.box-toggled(i, self.checked); }
+                                    }
+                                    if b.kind != 1: LineEdit {
+                                        width: 150px;
+                                        text: b.value;
+                                        enabled: !root.f-filed;
+                                        horizontal-alignment: b.kind == 0 ? right : left;
+                                        placeholder-text: b.kind == 0 ? "0.00" : "e.g. 101, 205";
+                                        edited(t) => { root.box-edited(i, t); }
+                                    }
+                                }
+                            }
+                            Section {
+                                title: "STATE (OPTIONAL)";
+                                HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    Field { label: "State"; text <=> root.s1-state; width: 60px; enabled: !root.f-filed; }
+                                    Field { label: "Payer's state no."; text <=> root.s1-no; preferred-width: 90px; horizontal-stretch: 1; enabled: !root.f-filed; }
+                                    Field { label: "Tax withheld"; text <=> root.s1-withheld; preferred-width: 90px; horizontal-stretch: 1; enabled: !root.f-filed; }
+                                    Field { label: "State income"; text <=> root.s1-income; preferred-width: 90px; horizontal-stretch: 1; enabled: !root.f-filed; }
+                                }
+                                HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    Field { label: "State 2"; text <=> root.s2-state; width: 60px; enabled: !root.f-filed; }
+                                    Field { label: ""; text <=> root.s2-no; preferred-width: 90px; horizontal-stretch: 1; enabled: !root.f-filed; }
+                                    Field { label: ""; text <=> root.s2-withheld; preferred-width: 90px; horizontal-stretch: 1; enabled: !root.f-filed; }
+                                    Field { label: ""; text <=> root.s2-income; preferred-width: 90px; horizontal-stretch: 1; enabled: !root.f-filed; }
+                                }
+                            }
+                            Section {
+                                title: "MORE";
+                                Field {
+                                    label: "Account number (needed when a recipient gets two forms of a kind)";
+                                    text <=> root.f-account;
+                                    enabled: !root.f-filed;
+                                }
+                                CheckRow {
+                                    text: "2nd TIN notice (the IRS told you twice in 3 years that the TIN was wrong)";
+                                    checked <=> root.f-second-tin;
+                                    enabled: !root.f-filed;
+                                }
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Caption { text: "Notes (not printed)"; }
+                                    TextEdit {
+                                        text <=> root.f-notes;
+                                        height: 64px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s2;
+                                if !root.f-filed: PrimaryButton {
+                                    text: "Save";
+                                    clicked => { root.save-form(); }
+                                }
+                                if !root.f-filed && !root.f-is-new: Button {
+                                    text: "Mark ready";
+                                    clicked => { root.mark-ready(); }
+                                }
+                                if root.f-filed: Button {
+                                    text: "Correct…";
+                                    clicked => { root.correct-form(); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                                if !root.f-filed && !root.f-is-new: Button {
+                                    text: "Delete";
+                                    clicked => {
+                                        root.d-text = "Delete this form?";
+                                        root.dialog = 5;
+                                    }
+                                }
+                                Button {
+                                    text: "Close";
+                                    clicked => { root.close-form(); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ----- Payers and Recipients -----
+            if root.section == 0 || root.section == 2: HorizontalLayout {
+                spacing: Theme.s4;
+                vertical-stretch: 1;
+                Card {
+                    horizontal-stretch: 1;
+                    VerticalLayout {
+                        padding: Theme.s3;
+                        spacing: Theme.s2;
+                        HorizontalLayout {
+                            spacing: Theme.s2;
+                            Caption {
+                                text: root.people-payers ? "Who pays: the business, church or person filing the forms." : "Who is paid: everyone who gets a Form 1099.";
+                                vertical-alignment: center;
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            Button {
+                                text: root.people-payers ? "New payer" : "New recipient";
+                                clicked => { root.new-person(); }
+                            }
+                        }
+                        if root.people.length == 0: Text {
+                            text: root.people-payers ? "Add the business, church or person that pays: its name, EIN, address and a phone number recipients can call." : "No recipients yet. Add one, or import vendors from a MoneyKeep book.";
+                            wrap: word-wrap;
+                            color: Theme.text-secondary;
+                            vertical-stretch: 1;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        if root.people.length > 0: ListView {
+                            vertical-stretch: 1;
+                            for p in root.people: ListRow {
+                                selected: p.id == root.selected-person;
+                                clicked => { root.select-person(p.id); }
+                                HorizontalLayout {
+                                    padding-left: Theme.s2;
+                                    padding-right: Theme.s3;
+                                    spacing: Theme.s3;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        horizontal-stretch: 1;
+                                        Text { text: p.name; color: Theme.text; overflow: elide; }
+                                        Text {
+                                            text: p.detail;
+                                            font-size: Theme.caption-size;
+                                            color: Theme.text-secondary;
+                                            overflow: elide;
+                                        }
+                                    }
+                                    Text {
+                                        text: p.tin;
+                                        vertical-alignment: center;
+                                        color: Theme.text-secondary;
+                                    }
+                                    if p.issues != "": VerticalLayout {
+                                        alignment: center;
+                                        Badge { text: p.issues; tone: 2; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if root.person-editing: Card {
+                    width: 470px;
+                    sv2 := ScrollView {
+                        VerticalLayout {
+                            width: sv2.visible-width;
+                            padding: Theme.s4;
+                            spacing: Theme.s3;
+                            Heading {
+                                text: root.p-is-new ? (root.p-is-payer ? "New payer" : "New recipient") : (root.p-is-payer ? "Payer" : "Recipient");
+                            }
+                            if root.p-source != "": Caption { text: root.p-source; }
+                            if root.p-findings.length > 0: Rectangle {
+                                background: Theme.surface-alt;
+                                border-radius: Theme.radius-small;
+                                VerticalLayout {
+                                    padding: Theme.s3;
+                                    NoteList { notes: root.p-findings; }
+                                }
+                            }
+                            Section {
+                                title: "NAME";
+                                if !root.p-is-payer: ComboBox {
+                                    model: ["Business or organisation", "Person"];
+                                    current-index <=> root.p-name-type;
+                                }
+                                if root.p-is-payer || root.p-name-type == 0: Field {
+                                    label: root.p-is-payer ? "Name" : "Business name (as on the W-9)";
+                                    text <=> root.p-business;
+                                }
+                                if !root.p-is-payer && root.p-name-type == 1: HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    Field { label: "First"; text <=> root.p-first; }
+                                    Field { label: "Middle"; text <=> root.p-middle; width: 80px; }
+                                    Field { label: "Last"; text <=> root.p-last; }
+                                    Field { label: "Suffix"; text <=> root.p-suffix; width: 60px; }
+                                }
+                                Field {
+                                    label: root.p-is-payer ? "Name line 2 (optional)" : "Name line 2 / business name (optional)";
+                                    text <=> root.p-business2;
+                                }
+                            }
+                            Section {
+                                title: "TAXPAYER ID";
+                                HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    VerticalLayout {
+                                        spacing: 2px;
+                                        width: 160px;
+                                        Caption { text: "Type"; }
+                                        ComboBox {
+                                            model: root.p-is-payer ? ["EIN", "SSN"] : ["Not known yet", "EIN", "SSN", "ITIN", "ATIN"];
+                                            current-index <=> root.p-tin-type;
+                                        }
+                                    }
+                                    Field {
+                                        label: "Number (from the W-9)";
+                                        text <=> root.p-tin;
+                                        placeholder: "123-45-6789";
+                                        enabled: root.book-encrypted;
+                                    }
+                                }
+                                if !root.book-encrypted: Caption {
+                                    text: "Taxpayer id numbers can only be entered in a password-protected book.";
+                                    color: Theme.warning;
+                                }
+                            }
+                            Section {
+                                title: "ADDRESS";
+                                Field { label: "Street address"; text <=> root.p-line1; }
+                                Field { label: "Address line 2 (apt., suite)"; text <=> root.p-line2; }
+                                HorizontalLayout {
+                                    spacing: Theme.s2;
+                                    Field { label: "City"; text <=> root.p-city; }
+                                    Field { label: "State"; text <=> root.p-state; width: 60px; }
+                                    Field { label: "ZIP"; text <=> root.p-zip; width: 100px; }
+                                }
+                                Field { label: "Country"; text <=> root.p-country; width: 120px; }
+                            }
+                            Section {
+                                title: "CONTACT";
+                                if root.p-is-payer: Field {
+                                    label: "Telephone (printed on recipient copies)";
+                                    text <=> root.p-phone;
+                                }
+                                Field { label: "Email"; text <=> root.p-email; }
+                                if !root.p-is-payer: Field { label: "Account number (optional)"; text <=> root.p-account; }
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s2;
+                                PrimaryButton {
+                                    text: "Save";
+                                    clicked => { root.save-person(); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                                if !root.p-is-new: Button {
+                                    text: "Delete";
+                                    clicked => {
+                                        root.d-text = root.p-is-payer ? "Delete this payer?" : "Delete this recipient?";
+                                        root.dialog = 6;
+                                    }
+                                }
+                                Button {
+                                    text: "Close";
+                                    clicked => { root.close-person(); }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ----- Import -----
+            if root.section == 1: sv3 := ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    width: sv3.visible-width;
+                    spacing: Theme.s4;
+                    alignment: start;
+                    Card {
+                        VerticalLayout {
+                            padding: Theme.s4;
+                            spacing: Theme.s3;
+                            Caption {
+                                text: "Bring in the vendors marked for 1099s in a MoneyKeep book and what you paid them by check, bank transfer or cash (card payments are reported by the card company on Form 1099-K). Running it again updates amounts and adds new vendors; filed forms are never changed.";
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s2;
+                                Field {
+                                    label: "MoneyKeep book";
+                                    text <=> root.im-path;
+                                    placeholder: "Choose a .moneykeep file";
+                                }
+                                VerticalLayout {
+                                    alignment: end;
+                                    width: 110px;
+                                    Button {
+                                        text: "Choose…";
+                                        clicked => { root.choose-mk-book(); }
+                                    }
+                                }
+                            }
+                            if root.im-encrypted: Field {
+                                label: "That book's password";
+                                text <=> root.im-password;
+                                password: true;
+                                accepted => { root.run-import(); }
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s2;
+                                Field {
+                                    label: "Tax year";
+                                    text <=> root.im-year;
+                                    width: 100px;
+                                }
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Caption { text: "Payer in this book"; }
+                                    ComboBox {
+                                        model: root.payer-names;
+                                        current-index <=> root.im-payer;
+                                    }
+                                }
+                            }
+                            CheckRow {
+                                text: "Also import vendors paid less than the threshold";
+                                checked <=> root.im-all;
+                            }
+                            HorizontalLayout {
+                                PrimaryButton {
+                                    text: "Import";
+                                    enabled: root.im-path != "" && root.payer-names.length > 0;
+                                    clicked => { root.run-import(); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                            if root.payer-names.length == 0: Caption {
+                                text: "Add the payer first (Payers).";
+                                color: Theme.warning;
+                            }
+                        }
+                    }
+                    if root.im-result.length > 0: Card {
+                        VerticalLayout {
+                            padding: Theme.s4;
+                            NoteList { notes: root.im-result; }
+                        }
+                    }
+                }
+            }
+
+            // ----- Print and e-file -----
+            if root.section == 4: sv4 := ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    width: sv4.visible-width;
+                    spacing: Theme.s4;
+                    alignment: start;
+                    Card {
+                        VerticalLayout {
+                            padding: Theme.s4;
+                            spacing: Theme.s3;
+                            Heading { text: "Recipient copies"; }
+                            Caption {
+                                text: "One PDF with a page per form and copy, ready to mail or hand out by January 31. Forms with unanswered checks are left out. Copy A for paper filing must be the IRS's red scannable form, so it is not printed: e-file instead.";
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s4;
+                                CheckRow { text: "Copy B (recipient)"; checked <=> root.copy-b; }
+                                CheckRow { text: "Copy 1 (state)"; checked <=> root.copy-1; }
+                                CheckRow { text: "Copy 2 (recipient's state return)"; checked <=> root.copy-2; }
+                                CheckRow { text: "Copy C (your records)"; checked <=> root.copy-c; }
+                            }
+                            CheckRow {
+                                text: "Show only the last four digits of the recipient's TIN";
+                                checked <=> root.truncate-tin;
+                            }
+                            HorizontalLayout {
+                                PrimaryButton {
+                                    text: "Save PDF…";
+                                    clicked => { root.print-copies(); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                        }
+                    }
+                    Card {
+                        VerticalLayout {
+                            padding: Theme.s4;
+                            spacing: Theme.s3;
+                            Heading { text: "IRS e-file (IRIS)"; }
+                            Caption {
+                                text: "IRIS is the IRS's free e-file system for 1099s. This makes the CSV files for its Taxpayer Portal (Upload CSV with Form Data), up to 100 forms per file. The IRS accepts only its current template: download it from the portal and choose it here so the columns match exactly.";
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s2;
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    width: 140px;
+                                    Caption { text: "Form"; }
+                                    ComboBox {
+                                        model: ["1099-NEC", "1099-MISC"];
+                                        current-index <=> root.ir-kind;
+                                    }
+                                }
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Caption { text: "Payer"; }
+                                    ComboBox {
+                                        model: root.payer-names;
+                                        current-index <=> root.ir-payer;
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s2;
+                                Field {
+                                    label: "IRS template (CSV from the portal)";
+                                    text <=> root.ir-template;
+                                    placeholder: "Not chosen: Form1099Keep's draft columns are used";
+                                }
+                                VerticalLayout {
+                                    alignment: end;
+                                    width: 110px;
+                                    Button {
+                                        text: "Choose…";
+                                        clicked => { root.choose-template(); }
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                PrimaryButton {
+                                    text: "Save IRIS files…";
+                                    clicked => { root.save-iris(); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                        }
+                    }
+                    Card {
+                        VerticalLayout {
+                            padding: Theme.s4;
+                            spacing: Theme.s3;
+                            Heading { text: "After filing"; }
+                            Caption {
+                                text: "When IRIS accepts the upload, mark the forms filed. Filed forms are locked; a later change is made with Correct.";
+                            }
+                            HorizontalLayout {
+                                spacing: Theme.s2;
+                                Field { label: "Date filed"; text <=> root.filed-date; width: 140px; }
+                                Field { label: "IRIS receipt id (optional)"; text <=> root.filed-receipt; }
+                            }
+                            HorizontalLayout {
+                                Button {
+                                    text: "Mark " + root.ready-count + " ready form(s) filed";
+                                    enabled: root.ready-count > 0;
+                                    clicked => { root.mark-filed(); }
+                                }
+                                Rectangle { horizontal-stretch: 1; }
+                            }
+                        }
+                    }
+                    if root.out-result.length > 0: Card {
+                        VerticalLayout {
+                            padding: Theme.s4;
+                            NoteList { notes: root.out-result; }
+                        }
+                    }
+                }
+            }
+
+            // ----- History -----
+            if root.section == 5: Card {
+                vertical-stretch: 1;
+                ListView {
+                    for h in root.history: Rectangle {
+                        height: 44px;
+                        HorizontalLayout {
+                            padding-left: Theme.s3;
+                            padding-right: Theme.s3;
+                            spacing: Theme.s3;
+                            Text {
+                                text: h.when;
+                                width: 150px;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: h.what;
+                                width: 220px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: h.detail;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ----- dialogs ---------------------------------------------------------------------
+    if root.dialog == 1: Dialog {
+        title: "New 1099 book";
+        Caption {
+            text: "A 1099 book is a MoneyKeep book that holds only Forms 1099. It is always password protected because it holds taxpayer id numbers. A long passphrase of several words is best.";
+        }
+        Field { label: "Book name"; autofocus: true; text <=> root.d-name; placeholder: "e.g. Grace Chapel 1099s"; }
+        Field { label: "Password"; text <=> root.d-password; password: true; accepted => { root.create-book(); } }
+        Field { label: "Repeat the password"; text <=> root.d-password2; password: true; accepted => { root.create-book(); } }
+        if root.d-error != "": Text { text: root.d-error; color: Theme.error; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: Theme.s2;
+            alignment: end;
+            Button { text: "Cancel"; clicked => { root.dialog-cancel(); } }
+            PrimaryButton { text: "Choose where to save…"; clicked => { root.create-book(); } }
+        }
+    }
+    if root.dialog == 2: Dialog {
+        title: "Password";
+        Caption { text: root.d-text; }
+        Field {
+            label: "Password or recovery key";
+            autofocus: true;
+            text <=> root.d-password;
+            password: true;
+            accepted => { root.unlock(); }
+        }
+        if root.d-error != "": Text { text: root.d-error; color: Theme.error; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: Theme.s2;
+            alignment: end;
+            Button { text: "Cancel"; clicked => { root.dialog-cancel(); } }
+            PrimaryButton { text: "Open"; clicked => { root.unlock(); } }
+        }
+    }
+    if root.dialog == 3: Dialog {
+        title: "Your recovery key";
+        card-width: 520px;
+        Caption {
+            text: "If you forget the password, this key opens the book. It is shown only now: write it down or print it and keep it somewhere safe, apart from the computer.";
+        }
+        Rectangle {
+            background: Theme.surface-alt;
+            border-radius: Theme.radius-small;
+            height: 56px;
+            TextInput {
+                text: root.recovery-key;
+                read-only: true;
+                font-size: 15px;
+                color: Theme.text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                single-line: false;
+                wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            PrimaryButton { text: "I have saved it"; clicked => { root.recovery-done(); } }
+        }
+    }
+    if root.dialog == 4: Dialog {
+        title: "Protect with a password";
+        Caption {
+            text: "The book is encrypted in place. Copies of the unprotected file made earlier (backups) are not changed.";
+        }
+        Field { label: "Password"; autofocus: true; text <=> root.d-password; password: true; accepted => { root.protect-book(); } }
+        Field { label: "Repeat the password"; text <=> root.d-password2; password: true; accepted => { root.protect-book(); } }
+        if root.d-error != "": Text { text: root.d-error; color: Theme.error; wrap: word-wrap; }
+        HorizontalLayout {
+            spacing: Theme.s2;
+            alignment: end;
+            Button { text: "Cancel"; clicked => { root.dialog-cancel(); } }
+            PrimaryButton { text: "Protect"; clicked => { root.protect-book(); } }
+        }
+    }
+    if root.dialog == 5 || root.dialog == 6: Dialog {
+        title: root.d-text;
+        Caption { text: "This cannot be undone."; }
+        HorizontalLayout {
+            spacing: Theme.s2;
+            alignment: end;
+            Button { text: "Cancel"; clicked => { root.dialog-cancel(); } }
+            PrimaryButton { text: "Delete"; clicked => { root.confirm-delete(); } }
+        }
+    }
+    // security-review-1 M6: a MoneyKeep book is marked as a 1099 book only after this.
+    if root.dialog == 7: Dialog {
+        title: "Open as a 1099 book?";
+        Caption { text: root.d-text; }
+        HorizontalLayout {
+            spacing: Theme.s2;
+            alignment: end;
+            Button { text: "Cancel"; clicked => { root.dialog-cancel(); } }
+            PrimaryButton { text: "Open as a 1099 book"; clicked => { root.confirm-mark(); } }
+        }
+    }
+}
