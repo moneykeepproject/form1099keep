@@ -199,6 +199,8 @@ mod tests {
         crate::workspace_root()
     }
 
+    // Only the Unix-only MAC-3 test uses it.
+    #[cfg(unix)]
     fn version() -> String {
         crate::package_version(&root()).unwrap()
     }
