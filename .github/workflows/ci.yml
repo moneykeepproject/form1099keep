@@ -1,0 +1,65 @@
+# Format, lint and tests on every push to master and every pull request, on Linux and Windows
+# (MoneyKeep's ci.yml, without the Mac: GitHub-hosted, never the project's own Mac, which only
+# release.yml may use; `cargo xtask workflows` checks that). Form1099Keep builds against the
+# sibling MoneyKeep checkout (../moneykeep), so MoneyKeep's main is checked out next to it, as
+# release.yml does.
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch (or pull request) cancels this run: the free plan runs
+# few jobs at once.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+        working-directory: form1099keep
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: form1099keep
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: moneykeepproject/moneykeep
+          ref: main
+          path: moneykeep
+          persist-credentials: false
+      - name: MoneyKeep commit
+        run: echo "Built against MoneyKeep \`$(git -C ../moneykeep rev-parse HEAD)\`" >>"$GITHUB_STEP_SUMMARY"
+      - name: Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libfontconfig1-dev
+      - name: Rust toolchain (1.97.0, rustfmt, clippy)
+        # Pinned, as in MoneyKeep: CI's clippy must match the version the code was checked
+        # with. Raise it on purpose (and fix any new lints) rather than following stable.
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.97.0
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --workspace --locked
+      - name: Workflow rules (the project's Mac only in release.yml)
+        run: cargo xtask workflows

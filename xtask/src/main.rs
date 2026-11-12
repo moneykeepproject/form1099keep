@@ -52,8 +52,7 @@ const APP: App = App {
     sign_prefix: "FK",
 };
 
-const USAGE: &str =
-    "usage: cargo xtask release [--dry-run] | cargo xtask installer [--skip-release] (macOS: packaging/macos/package.sh's options) | cargo xtask icns --out FILE | cargo xtask workflows";
+const USAGE: &str = "usage: cargo xtask release [--dry-run] | cargo xtask installer [--skip-release] (macOS: packaging/macos/package.sh's options) | cargo xtask icns --out FILE | cargo xtask workflows";
 
 /// The tasks `main` runs (release.yml may name only these).
 pub(crate) const TASKS: [&str; 4] = ["release", "installer", "icns", "workflows"];
@@ -425,7 +424,10 @@ fn installer(args: &[String]) -> Result<(), String> {
         return Err(format!("installer: unknown option {other}"));
     }
     if !cfg!(windows) {
-        return Err(format!("cargo xtask installer makes the Windows setup on Windows and the macOS disk image on a Mac. Here, cargo xtask release --dry-run lists what it would make ({}).", APP.product));
+        return Err(format!(
+            "cargo xtask installer makes the Windows setup on Windows and the macOS disk image on a Mac. Here, cargo xtask release --dry-run lists what it would make ({}).",
+            APP.product
+        ));
     }
     let makensis = find_makensis().ok_or(NO_MAKENSIS)?;
     let sign_with = signing()?;
@@ -517,8 +519,7 @@ mod tests {
     fn the_dry_run_names_the_release_folder() {
         let r = run_release(&workspace_root(), true).unwrap();
         assert!(
-            r.folder
-                .ends_with(format!("dist/{}-0.1.0", APP.product)),
+            r.folder.ends_with(format!("dist/{}-0.1.0", APP.product)),
             "{}",
             r.folder.display()
         );
