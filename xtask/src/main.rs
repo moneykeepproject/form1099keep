@@ -509,17 +509,17 @@ mod tests {
         let ws =
             "[workspace]\nmembers = [\"a\"]\n\n[workspace.package]\nversion = \"0.1.0-alpha.1\"\n";
         assert_eq!(parse_package_version(ws).as_deref(), Some("0.1.0-alpha.1"));
-        // This repository's release: 0.1.0, four numbers 0.1.0.0.
+        // This repository's release: 0.1.1 (the Mac build's), four numbers 0.1.1.0.
         let v = package_version(&workspace_root()).unwrap();
-        assert_eq!(v, "0.1.0");
-        assert_eq!(version_quad(&v), "0.1.0.0");
+        assert_eq!(v, "0.1.1");
+        assert_eq!(version_quad(&v), "0.1.1.0");
     }
 
     #[test]
     fn the_dry_run_names_the_release_folder() {
         let r = run_release(&workspace_root(), true).unwrap();
         assert!(
-            r.folder.ends_with(format!("dist/{}-0.1.0", APP.product)),
+            r.folder.ends_with(format!("dist/{}-0.1.1", APP.product)),
             "{}",
             r.folder.display()
         );
