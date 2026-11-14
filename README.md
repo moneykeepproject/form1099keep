@@ -32,7 +32,7 @@ only payers, recipients and Forms 1099.
 
 Form1099Keep prepares forms; it does not give tax advice or transmit to the IRS.
 
-Version 0.1.0: [release notes](docs/release-notes/0.1.0.md) · [known limits](docs/known-limits.md).
+Version 0.1.1: [release notes](docs/release-notes/0.1.1.md) · [known limits](docs/known-limits.md).
 
 ## Build
 
