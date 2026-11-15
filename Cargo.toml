@@ -1,7 +1,7 @@
 [package]
 name = "form1099keep"
 description = "Form1099Keep: an independent Form 1099-NEC and 1099-MISC creator in the MoneyKeep family. Books are MoneyKeep books."
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
