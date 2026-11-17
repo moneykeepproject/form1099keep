@@ -13,11 +13,14 @@
     windows_subsystem = "windows"
 )]
 
+mod dialogs;
+
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::str::FromStr;
 
+use dialogs::Ask;
 use form1099keep::boxes::{self, BoxKind};
 use form1099keep::check::{self, Severity, Subject};
 use form1099keep::jobs::{self, Year};
@@ -182,6 +185,38 @@ fn amount_text(d: Decimal) -> String {
         String::new()
     } else {
         check::money(d)
+    }
+}
+
+/// Show a file dialog; `then` runs with the chosen path (never when cancelled). macOS
+/// answers on a later turn of the event loop, with the state borrowed again then;
+/// elsewhere `then` runs before this returns (see `dialogs`).
+fn choose(
+    ui: &AppWindow,
+    st: &mut State,
+    shared: &Shared,
+    ask: Ask,
+    then: impl FnOnce(&AppWindow, &mut State, PathBuf) + 'static,
+) {
+    if !dialogs::ANSWER_LATER {
+        if let Some(p) = ask.run_blocking() {
+            then(ui, st, p);
+        }
+        return;
+    }
+    let weak = ui.as_weak();
+    let shared = Rc::clone(shared);
+    let shown = ask.run_later();
+    let task = async move {
+        let Some(p) = shown.await else { return };
+        let Some(ui) = weak.upgrade() else { return };
+        let Ok(mut guard) = shared.try_borrow_mut() else {
+            return show_message(&ui, 2, "Form1099Keep was busy. Please try again.");
+        };
+        then(&ui, &mut guard, p);
+    };
+    if let Err(e) = slint::spawn_local(task) {
+        show_message(ui, 2, format!("Cannot open the file window: {e}"));
     }
 }
 
@@ -783,6 +818,21 @@ fn wire(ui: &AppWindow, state: &Shared) {
             });
         }};
     }
+    // As `on!`, and `$sh` is the shared state, for a file dialog that answers later
+    // (macOS; see `choose`).
+    macro_rules! on_ask {
+        ($name:ident, |$ui:ident, $st:ident, $sh:ident $(, $arg:ident : $t:ty)*| $body:block) => {{
+            let weak = ui.as_weak();
+            let state = state.clone();
+            ui.$name(move |$($arg: $t),*| {
+                let Some($ui) = weak.upgrade() else { return };
+                let $sh: &Shared = &state;
+                let mut guard = state.borrow_mut();
+                let $st: &mut State = &mut guard;
+                $body
+            });
+        }};
+    }
 
     on!(on_dismiss_message, |ui, _st| {
         ui.set_message(s(""));
@@ -803,7 +853,7 @@ fn wire(ui: &AppWindow, state: &Shared) {
         ui.set_dialog(1);
     });
 
-    on!(on_create_book, |ui, st| {
+    on_ask!(on_create_book, |ui, st, sh| {
         let name = ui.get_d_name().trim().to_owned();
         let pw = ui.get_d_password().to_string();
         if name.is_empty() {
@@ -823,24 +873,22 @@ fn wire(ui: &AppWindow, state: &Shared) {
             name.replace(['/', '\\', ':'], "-"),
             form1099keep::BOOK_EXTENSION
         );
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Save the new 1099 book")
-            .set_file_name(file)
-            .add_filter("MoneyKeep book", &[form1099keep::BOOK_EXTENSION])
-            .save_file()
-        else {
-            return;
-        };
-        match Book::create(&path, &name, &pw) {
-            Ok((book, key)) => {
-                ui.set_d_password(s(""));
-                ui.set_d_password2(s(""));
-                ui.set_recovery_key(s(key));
-                st.after_recovery = Some(book);
-                ui.set_dialog(3);
+        let ask = Ask::save()
+            .title("Save the new 1099 book")
+            .file_name(file)
+            .filter("MoneyKeep book", &[form1099keep::BOOK_EXTENSION]);
+        choose(&ui, st, sh, ask, move |ui, st, path| {
+            match Book::create(&path, &name, &pw) {
+                Ok((book, key)) => {
+                    ui.set_d_password(s(""));
+                    ui.set_d_password2(s(""));
+                    ui.set_recovery_key(s(key));
+                    st.after_recovery = Some(book);
+                    ui.set_dialog(3);
+                }
+                Err(e) => ui.set_d_error(s(e.to_string())),
             }
-            Err(e) => ui.set_d_error(s(e.to_string())),
-        }
+        });
     });
 
     on!(on_recovery_done, |ui, st| {
@@ -855,14 +903,13 @@ fn wire(ui: &AppWindow, state: &Shared) {
         }
     });
 
-    on!(on_open_book, |ui, st| {
-        if let Some(path) = rfd::FileDialog::new()
-            .set_title("Open a 1099 book")
-            .add_filter("MoneyKeep book", &[form1099keep::BOOK_EXTENSION])
-            .pick_file()
-        {
-            open_path(&ui, st, path);
-        }
+    on_ask!(on_open_book, |ui, st, sh| {
+        let ask = Ask::file()
+            .title("Open a 1099 book")
+            .filter("MoneyKeep book", &[form1099keep::BOOK_EXTENSION]);
+        choose(&ui, st, sh, ask, move |ui, st, path| {
+            open_path(ui, st, path);
+        });
     });
 
     on!(on_open_recent, |ui, st, path: SharedString| {
@@ -1228,18 +1275,17 @@ fn wire(ui: &AppWindow, state: &Shared) {
     });
 
     // Import
-    on!(on_choose_mk_book, |ui, _st| {
-        if let Some(p) = rfd::FileDialog::new()
-            .set_title("Choose the MoneyKeep book")
-            .add_filter("MoneyKeep book", &[form1099keep::BOOK_EXTENSION])
-            .pick_file()
-        {
+    on_ask!(on_choose_mk_book, |ui, st, sh| {
+        let ask = Ask::file()
+            .title("Choose the MoneyKeep book")
+            .filter("MoneyKeep book", &[form1099keep::BOOK_EXTENSION]);
+        choose(&ui, st, sh, ask, move |ui, _st, p| {
             ui.set_im_encrypted(matches!(
                 mk_store::book_kind(&p),
                 Ok(mk_store::BookKind::Encrypted)
             ));
             ui.set_im_path(s(p.display().to_string()));
-        }
+        });
     });
 
     on!(on_run_import, |ui, st| {
@@ -1315,7 +1361,7 @@ fn wire(ui: &AppWindow, state: &Shared) {
     });
 
     // Print and e-file
-    on!(on_print_copies, |ui, st| {
+    on_ask!(on_print_copies, |ui, st, sh| {
         let mut copies = Vec::new();
         for (on, c) in [
             (ui.get_copy_b(), pdf::Copy::B),
@@ -1342,44 +1388,41 @@ fn wire(ui: &AppWindow, state: &Shared) {
             Ok(p) => p,
             Err(e) => return ui.set_out_result(model(vec![note(2, e.to_string())])),
         };
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Save recipient copies")
-            .set_file_name(format!("1099 recipient copies {}.pdf", y.year))
-            .add_filter("PDF", &["pdf"])
-            .save_file()
-        else {
-            return;
-        };
-        let mut notes = Vec::new();
-        match std::fs::write(&path, &printed.pdf) {
-            Ok(()) => notes.push(note(
-                3,
-                format!(
-                    "Saved {} — {} form(s), {} page(s).",
-                    path.display(),
-                    printed.forms,
-                    printed.pages
-                ),
-            )),
-            Err(e) => notes.push(note(2, format!("Cannot write {}: {e}", path.display()))),
-        }
-        for x in &printed.skipped {
-            notes.push(note(4, format!("Left out {}: {}", x.label, x.reason)));
-        }
-        ui.set_out_result(model(notes));
+        let ask = Ask::save()
+            .title("Save recipient copies")
+            .file_name(format!("1099 recipient copies {}.pdf", y.year))
+            .filter("PDF", &["pdf"]);
+        choose(&ui, st, sh, ask, move |ui, _st, path| {
+            let mut notes = Vec::new();
+            match std::fs::write(&path, &printed.pdf) {
+                Ok(()) => notes.push(note(
+                    3,
+                    format!(
+                        "Saved {} — {} form(s), {} page(s).",
+                        path.display(),
+                        printed.forms,
+                        printed.pages
+                    ),
+                )),
+                Err(e) => notes.push(note(2, format!("Cannot write {}: {e}", path.display()))),
+            }
+            for x in &printed.skipped {
+                notes.push(note(4, format!("Left out {}: {}", x.label, x.reason)));
+            }
+            ui.set_out_result(model(notes));
+        });
     });
 
-    on!(on_choose_template, |ui, _st| {
-        if let Some(p) = rfd::FileDialog::new()
-            .set_title("Choose the CSV template downloaded from the IRIS portal")
-            .add_filter("CSV", &["csv"])
-            .pick_file()
-        {
+    on_ask!(on_choose_template, |ui, st, sh| {
+        let ask = Ask::file()
+            .title("Choose the CSV template downloaded from the IRIS portal")
+            .filter("CSV", &["csv"]);
+        choose(&ui, st, sh, ask, move |ui, _st, p| {
             ui.set_ir_template(s(p.display().to_string()));
-        }
+        });
     });
 
-    on!(on_save_iris, |ui, st| {
+    on_ask!(on_save_iris, |ui, st, sh| {
         let kind = if ui.get_ir_kind() == 1 {
             FormKind::Misc
         } else {
@@ -1402,53 +1445,50 @@ fn wire(ui: &AppWindow, state: &Shared) {
             Ok(f) => f,
             Err(e) => return ui.set_out_result(model(vec![note(2, e.to_string())])),
         };
-        let Some(folder) = rfd::FileDialog::new()
-            .set_title("Choose a folder for the IRIS files")
-            .pick_folder()
-        else {
-            return;
-        };
-        let mut notes = Vec::new();
-        match iris::write_files(&folder, &files.built.files) {
-            Ok(paths) => {
-                notes.push(note(
-                    3,
-                    format!(
-                        "{} form(s) in {} file(s) in {}.",
-                        files.rows,
-                        paths.len(),
-                        folder.display()
-                    ),
-                ));
-                for p in paths {
-                    notes.push(note(1, p.display().to_string()));
+        let ask = Ask::folder().title("Choose a folder for the IRIS files");
+        choose(&ui, st, sh, ask, move |ui, _st, folder| {
+            let mut notes = Vec::new();
+            match iris::write_files(&folder, &files.built.files) {
+                Ok(paths) => {
+                    notes.push(note(
+                        3,
+                        format!(
+                            "{} form(s) in {} file(s) in {}.",
+                            files.rows,
+                            paths.len(),
+                            folder.display()
+                        ),
+                    ));
+                    for p in paths {
+                        notes.push(note(1, p.display().to_string()));
+                    }
                 }
+                Err(e) => notes.push(note(2, e.to_string())),
             }
-            Err(e) => notes.push(note(2, e.to_string())),
-        }
-        if files.builtin_headers {
-            notes.push(note(
+            if files.builtin_headers {
+                notes.push(note(
                 4,
                 "Built with Form1099Keep's draft columns. The IRS accepts only its own template: \
                  download this year's template in the IRIS portal and choose it above before uploading.",
             ));
-        }
-        for h in &files.built.unmapped {
-            notes.push(note(
-                4,
-                format!("Left blank (column not known to Form1099Keep): {h}"),
-            ));
-        }
-        for h in &files.built.unconfirmed {
-            notes.push(note(
-                4,
-                format!("Check this column's value against the IRS guidelines: {h}"),
-            ));
-        }
-        for x in &files.skipped {
-            notes.push(note(4, format!("Left out {}: {}", x.label, x.reason)));
-        }
-        ui.set_out_result(model(notes));
+            }
+            for h in &files.built.unmapped {
+                notes.push(note(
+                    4,
+                    format!("Left blank (column not known to Form1099Keep): {h}"),
+                ));
+            }
+            for h in &files.built.unconfirmed {
+                notes.push(note(
+                    4,
+                    format!("Check this column's value against the IRS guidelines: {h}"),
+                ));
+            }
+            for x in &files.skipped {
+                notes.push(note(4, format!("Left out {}: {}", x.label, x.reason)));
+            }
+            ui.set_out_result(model(notes));
+        });
     });
 
     on!(on_mark_filed, |ui, st| {
